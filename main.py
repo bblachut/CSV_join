@@ -6,7 +6,17 @@ from enum import Enum
 from typing import List
 import heapq
 
-"""Buffer size determines how many characters we can handle at one time """
+"""
+Program joins 2 files using specified by user column name and join_type.
+Firstly it sorts csv files by specified column using external sort which splits file into (file size/BUFFER_SIZE) files
+and then merges them using min heap. At the end, script joins 2 files and prints result iterating over them.
+Program stores in memory at once BUFFER_SIZE characters (+one possible line from csv) while splitting into blocks
+and (file size/BUFFER_SIZE)*(line size) while merging.
+Time Complexity of sorting in blocks is O(F/B * BlogB) = O(F*logB), merging blocks O(N*log(F/B)),
+reading files O(M) and joining + printing O(M) where B is a BUFFER_SIZE, F is a csv file size, M is amount of
+characters in csv file and N is a amount of lines in csv file.
+So final complexity is  O(F*logB + M + N*log(size/BUFFER_SIZE))
+"""
 BUFFER_SIZE = 10
 
 
@@ -32,6 +42,7 @@ def main():
 
     external_sort(file_path_left, file_path_right, joined_column_left, joined_column_right)
 
+    print_column_names(file_path_left, file_path_right)
     join(join_type, joined_column_left, joined_column_right)
 
     shutil.rmtree('./tmp/')
@@ -51,11 +62,22 @@ def get_joined_column_id(file_path: str, column_name: str) -> int:
         exit(1)
 
 
-def save_block(block_id: int, block: List, saving_path: str):
+def save_block(block_id: int, block: List[List[str]], saving_path: str):
     file_path = "./tmp/block"+str(block_id)+saving_path+".csv"
     with open(file_path, 'x', newline='') as file:
         writer = csv.writer(file,  delimiter=';')
         writer.writerows(block)
+
+
+def print_column_names(file_l: str, file_r: str):
+    column_names = []
+    with open(file_l) as file:
+        reader = csv.reader(file, delimiter=';')
+        column_names += next(reader)
+    with open(file_r) as file:
+        reader = csv.reader(file, delimiter=';')
+        column_names += next(reader)
+    print(column_names)
 
 
 ########### sorting csv files ###########
@@ -135,7 +157,7 @@ def join(join_type: JoinType, joined_column_left: int, joined_column_right: int)
     with open("./tmp/sorted_left.csv") as left:
         with open("./tmp/sorted_right.csv") as right:
             # If it is a right join we can just change left and right file
-            # to assume that it is always a left joint
+            # to assume that it is always a left join
             if join_type == JoinType.RIGHT:
                 left, right = right, left
                 joined_column_right, joined_column_left = joined_column_left, joined_column_right
@@ -172,7 +194,7 @@ def join(join_type: JoinType, joined_column_left: int, joined_column_right: int)
                 row_left, should_left_read = get_next(reader_left)
 
 
-def get_next(reader: csv.reader):
+def get_next(reader: csv.reader) -> (List[str], bool):
     should_read = True
     row = []
     try:
