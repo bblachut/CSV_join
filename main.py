@@ -4,6 +4,7 @@ import sys
 import csv
 from enum import Enum
 from typing import List
+from itertools import tee
 import heapq
 
 """
@@ -180,8 +181,13 @@ def join(join_type: JoinType, joined_column_left: int, joined_column_right: int)
                         print(row_right+row_left)
                     else:
                         print(row_left + row_right)
-                    row_right, should_right_read = get_next(reader_right)
+
+                    # check if more records could be connected
+                    reader_right, reader_copy = tee(reader_right)
+                    look_for_more_joins(row_left, reader_copy, joined_column_left, joined_column_right, join_type)
+
                     row_left, should_left_read = get_next(reader_left)
+
                 elif row_left[joined_column_left] < row_right[joined_column_right]:
                     if join_type != JoinType.INNER:
                         if join_type == JoinType.LEFT:
@@ -189,6 +195,7 @@ def join(join_type: JoinType, joined_column_left: int, joined_column_right: int)
                         else:
                             print([None for _ in range(right_len)] + row_left)
                     row_left, should_left_read = get_next(reader_left)
+
                 else:
                     row_right, should_right_read = get_next(reader_right)
 
@@ -208,6 +215,16 @@ def get_next(reader: csv.reader) -> (List[str], bool):
     except StopIteration:
         should_read = False
     return row, should_read
+
+
+def look_for_more_joins(row: List[str], reader: csv.reader, joined_column_left: int, joined_column_right: int, join_type: JoinType):
+    new_row, is_ok = get_next(reader)
+    while is_ok and new_row[joined_column_right] == row[joined_column_left]:
+        if join_type == JoinType.RIGHT:
+            print(new_row+row)
+        else:
+            print(row+new_row)
+        new_row, is_ok = get_next(reader)
 
 
 if __name__ == "__main__":
