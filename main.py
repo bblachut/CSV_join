@@ -17,7 +17,7 @@ reading files O(M) and joining + printing O(M) where B is a BUFFER_SIZE, F is a 
 characters in csv file and N is a amount of lines in csv file.
 So final complexity is  O(F*logB + M + N*log(size/BUFFER_SIZE))
 """
-BUFFER_SIZE = 10
+BUFFER_SIZE = 1000
 
 
 def main():
@@ -48,7 +48,9 @@ def main():
     shutil.rmtree('./tmp/')
 
 
-##### utilities ########
+""" utilities """
+
+
 def get_joined_column_id(file_path: str, column_name: str) -> int:
     with open(file_path) as file:
         reader = csv.reader(file, delimiter=';')
@@ -80,7 +82,9 @@ def print_column_names(file_l: str, file_r: str):
     print(column_names)
 
 
-########### sorting csv files ###########
+""" sorting csv files """
+
+
 def external_sort(left_path: str, right_path: str, joined_column_left: int, joined_column_right: int):
     if os.path.exists('./tmp/'):
         shutil.rmtree('./tmp/')
@@ -146,7 +150,9 @@ def merge_blocks(block_number: int, joined_column: int, saving_path: str):
                 open_files[min_element[2]].close()
 
 
-########joining############
+""" join """
+
+
 class JoinType(Enum):
     LEFT = 0
     RIGHT = 1
