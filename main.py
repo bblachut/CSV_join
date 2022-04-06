@@ -2,25 +2,39 @@ import os
 import shutil
 import sys
 import csv
+from enum import Enum
 from typing import List
 import heapq
 
 """Buffer size determines how many characters we can handle at one time """
-BUFFER_SIZE = 20
+BUFFER_SIZE = 10
+
 
 def main():
-    # file_path_left = sys.argv[2]
-    # file_path_right = sys.argv[3]
-    # column_name = sys.argv[4]
-    # join_type = sys.argv[5]
-
-    file_path_left = "left.csv"
-    column_name = "Surname"
+    if sys.argv[1] != "join":
+        exit(1)
+    file_path_left = sys.argv[2]
+    file_path_right = sys.argv[3]
+    column_name = sys.argv[4]
+    join_type = sys.argv[5]
+    if join_type == "left":
+        join_type = JoinType.LEFT
+    elif join_type == "right":
+        join_type = JoinType.RIGHT
+    elif join_type == "inner":
+        join_type = JoinType.INNER
+    else:
+        print("Wrong join type")
+        exit(1)
 
     joined_column_left = get_joined_column_id(file_path_left, column_name)
-    # joined_column_right = get_joined_column_id(file_path_right, column_name)
+    joined_column_right = get_joined_column_id(file_path_right, column_name)
 
-    external_sort(file_path_left, joined_column_left)
+    external_sort(file_path_left, file_path_right, joined_column_left, joined_column_right)
+
+    join(join_type, joined_column_left, joined_column_right)
+
+    shutil.rmtree('./tmp/')
 
 
 ##### utilities ########
@@ -37,23 +51,25 @@ def get_joined_column_id(file_path: str, column_name: str) -> int:
         exit(1)
 
 
-def save_block(block_id: int, block: List):
-    file_path = "./tmp/block"+str(block_id)+".csv"
+def save_block(block_id: int, block: List, saving_path: str):
+    file_path = "./tmp/block"+str(block_id)+saving_path+".csv"
     with open(file_path, 'x', newline='') as file:
         writer = csv.writer(file,  delimiter=';')
         writer.writerows(block)
 
 
 ########### sorting csv files ###########
-def external_sort(file_path: str, joined_column: int):
+def external_sort(left_path: str, right_path: str, joined_column_left: int, joined_column_right: int):
     if os.path.exists('./tmp/'):
         shutil.rmtree('./tmp/')
     os.mkdir('./tmp/')
-    block_number = save_sorted_blocks(file_path, joined_column)
-    merge_blocks(block_number, joined_column)
+    block_number_left = save_sorted_blocks(left_path, joined_column_left, "left")
+    block_number_right = save_sorted_blocks(right_path, joined_column_right, "right")
+    merge_blocks(block_number_left, joined_column_left, "left")
+    merge_blocks(block_number_right, joined_column_right, "right")
 
 
-def save_sorted_blocks(file_path: str, joined_column: int) -> int:
+def save_sorted_blocks(file_path: str, joined_column: int, saving_path: str) -> int:
     current_block = []
     block_id = 0
     characters = 0
@@ -67,27 +83,27 @@ def save_sorted_blocks(file_path: str, joined_column: int) -> int:
             current_block.append(row)
             if characters >= BUFFER_SIZE:
                 current_block.sort(key=lambda x: x[joined_column])
-                save_block(block_id, current_block)
+                save_block(block_id, current_block, saving_path)
                 block_id += 1
                 characters = 0
                 current_block = []
         if characters > 0:
             current_block.sort(key=lambda x: x[joined_column])
-            save_block(block_id, current_block)
+            save_block(block_id, current_block, saving_path)
             block_id += 1
 
     return block_id
 
 
-def merge_blocks(block_number: int, joined_column: int):
-    with open("./tmp/sorted.csv", 'x', newline='') as sorted_file:
+def merge_blocks(block_number: int, joined_column: int, saving_path: str):
+    with open("./tmp/sorted_"+saving_path+".csv", 'x', newline='') as sorted_file:
         min_heap = []
         heapq.heapify(min_heap)
         open_files = []
         readers = []
         writer = csv.writer(sorted_file, delimiter=';')
         for i in range(block_number):
-            file = open("./tmp/block"+str(i)+".csv", 'r', newline='')
+            file = open("./tmp/block"+str(i)+saving_path+".csv", 'r', newline='')
             reader = csv.reader(file, delimiter=';')
 
             readers.append(reader)
@@ -107,6 +123,63 @@ def merge_blocks(block_number: int, joined_column: int):
             else:
                 open_files[min_element[2]].close()
 
+
+########joining############
+class JoinType(Enum):
+    LEFT = 0
+    RIGHT = 1
+    INNER = 2
+
+
+def join(join_type: JoinType, joined_column_left: int, joined_column_right: int):
+    with open("./tmp/sorted_left.csv") as left:
+        with open("./tmp/sorted_right.csv") as right:
+            # If it is a right join we can just change left and right file
+            # to assume that it is always a left joint
+            if join_type == JoinType.RIGHT:
+                left, right = right, left
+                joined_column_right, joined_column_left = joined_column_left, joined_column_right
+            reader_left = csv.reader(left, delimiter=';')
+            reader_right = csv.reader(right, delimiter=';')
+            row_right, should_right_read = get_next(reader_right)
+            row_left, should_left_read = get_next(reader_left)
+
+            right_len = len(row_right)
+
+            while should_right_read and should_left_read:
+                if row_left[joined_column_left] == row_right[joined_column_right]:
+                    if join_type == JoinType.RIGHT:
+                        print(row_right+row_left)
+                    else:
+                        print(row_left + row_right)
+                    row_right, should_right_read = get_next(reader_right)
+                    row_left, should_left_read = get_next(reader_left)
+                elif row_left[joined_column_left] < row_right[joined_column_right]:
+                    if join_type != JoinType.INNER:
+                        if join_type == JoinType.LEFT:
+                            print(row_left+[None for _ in range(right_len)])
+                        else:
+                            print([None for _ in range(right_len)] + row_left)
+                    row_left, should_left_read = get_next(reader_left)
+                else:
+                    row_right, should_right_read = get_next(reader_right)
+
+            while join_type != JoinType.INNER and should_left_read:
+                if join_type == JoinType.LEFT:
+                    print(row_left + [None for _ in range(right_len)])
+                else:
+                    print([None for _ in range(right_len)] + row_left)
+                row_left, should_left_read = get_next(reader_left)
+
+
+def get_next(reader: csv.reader):
+    should_read = True
+    row = []
+    try:
+        row = next(reader)
+    except StopIteration:
+        should_read = False
+    return row, should_read
 
 
 if __name__ == "__main__":
